@@ -4,15 +4,23 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Repositories\TaskRepositoryInterface;
 
 class TaskController extends Controller
-{
+{   
+    public function __construct(
+        private TaskRepositoryInterface $taskRepository
+    ) {}
     /**
      * List only the logged-in user's tasks, newest first.
      */
     public function index(Request $request): JsonResponse
     {
-        $tasks = $request->user()->tasks()->latest()->get();
+        //$tasks = $request->user()->tasks()->latest()->get();
+
+        $tasks = $this->taskRepository->getForUser(
+            $request->user()
+        );
 
         return response()->json($tasks);
     }
@@ -26,8 +34,11 @@ class TaskController extends Controller
             'title' => ['required', 'string', 'max:255'],
         ]);
 
-        $task = $request->user()->tasks()->create($data);
-
+        //$task = $request->user()->tasks()->create($data);
+        $task = $this->taskRepository->createForUser(
+            $request->user(),
+            $data
+        );
         return response()->json($task->refresh(), 201);
     }
 
@@ -36,14 +47,20 @@ class TaskController extends Controller
      */
     public function update(Request $request, int $id): JsonResponse
     {
-        $task = $request->user()->tasks()->findOrFail($id);
+        //$task = $request->user()->tasks()->findOrFail($id);
+
+        $task = $this->taskRepository->findForUser(
+            $request->user(),
+            $id
+        );
 
         $data = $request->validate([
             'title' => ['sometimes', 'required', 'string', 'max:255'],
             'completed' => ['sometimes', 'required', 'boolean'],
         ]);
 
-        $task->update($data);
+        $task = $this->taskRepository->update($task, $data);
+        //$task->update($data);
 
         return response()->json($task);
     }
@@ -53,8 +70,14 @@ class TaskController extends Controller
      */
     public function destroy(Request $request, int $id): JsonResponse
     {
-        $task = $request->user()->tasks()->findOrFail($id);
-        $task->delete();
+        //$task = $request->user()->tasks()->findOrFail($id);
+        //$task->delete();
+        $task = $this->taskRepository->findForUser(
+            $request->user(),
+            $id
+        );
+
+        $this->taskRepository->delete($task);
 
         return response()->json(['message' => 'Task deleted successfully.']);
     }

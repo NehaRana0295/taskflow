@@ -90,6 +90,8 @@ export default function App() {
 
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
 
+  const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
+
   // Check the existing login session when the app opens.
   useEffect(() => {
     let active = true;
@@ -158,72 +160,67 @@ export default function App() {
     };
   }, [user]);
 
-  async function addTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveTask(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
 
-    const title = newTitle.trim();
+  const title = newTitle.trim();
 
-    if (!title) {
-      setTaskError('Please enter a task title.');
-      return;
-    }
+  if (!title || title.length > 255) {
+    setTaskError('Enter a title between 1 and 255 characters.');
+    return;
+  }
 
+  setTaskError('');
+
+  if (taskToEdit) {
+    setEditingTaskId(taskToEdit.id);
+  } else {
     setAddingTask(true);
-    setTaskError('');
+  }
 
-    try {
+  try {
+    if (taskToEdit) {
+      const response = await api.patch<Task>(
+        `/api/tasks/${taskToEdit.id}`,
+        { title }
+      );
+
+      setTasks(previous =>
+        previous.map(task =>
+          task.id === response.data.id ? response.data : task
+        )
+      );
+    } else {
       const response = await api.post<Task>('/api/tasks', {
         title,
       });
 
       setTasks(previous => [response.data, ...previous]);
-      setNewTitle('');
-    } catch (error: unknown) {
-      setTaskError(errorMessage(error));
-    } finally {
-      setAddingTask(false);
     }
+
+    setNewTitle('');
+    setTaskToEdit(null);
+  } catch (error: unknown) {
+    setTaskError(errorMessage(error));
+  } finally {
+    setAddingTask(false);
+    setEditingTaskId(null);
+  }
+}
+
+   function editTask(task: Task) {
+    setTaskToEdit(task);
+    setNewTitle(task.title);
+    setTaskError('');
+
+    document.getElementById('task-title')?.focus();
   }
 
-  async function editTask(task: Task) {
-      const enteredTitle = window.prompt('Edit task title:', task.title);
-
-      // Cancel means no change.
-      if (enteredTitle === null) {
-        return;
-      }
-
-      const title = enteredTitle.trim();
-
-      if (!title || title.length > 255) {
-        setTaskError('Enter a title between 1 and 255 characters.');
-        return;
-      }
-
-      if (title === task.title) {
-        return;
-      }
-
-      setEditingTaskId(task.id);
-      setTaskError('');
-
-      try {
-        const response = await api.patch<Task>(
-          `/api/tasks/${task.id}`,
-          { title }
-        );
-
-        setTasks(previous =>
-          previous.map(item =>
-            item.id === task.id ? response.data : item
-          )
-        );
-      } catch (error: unknown) {
-        setTaskError(errorMessage(error));
-      } finally {
-        setEditingTaskId(null);
-      }
-    }
+  function cancelEdit() {
+    setTaskToEdit(null);
+    setNewTitle('');
+    setTaskError('');
+  }
 
   async function deleteTask(task: Task) {
     if (!window.confirm(`Delete "${task.title}"?`)) {
@@ -239,6 +236,9 @@ export default function App() {
       setTasks(previous =>
         previous.filter(item => item.id !== task.id)
       );
+      if (taskToEdit?.id === task.id) {
+      cancelEdit();
+      }
     } catch (error: unknown) {
       setTaskError(errorMessage(error));
     } finally {
@@ -316,6 +316,7 @@ export default function App() {
       setTaskError('');
       setLoadingTasks(false);
       setMode('login');
+      cancelEdit();
     } catch (error: unknown) {
       setError(errorMessage(error));
     } finally {
@@ -382,11 +383,32 @@ export default function App() {
 
           <section className="task-panel" aria-labelledby="tasks-heading">
             <div className="panel-heading"><div><h2 id="tasks-heading">My tasks <span className="count">{tasks.length}</span></h2><p className="muted">Capture an idea. Take the next step.</p></div><span className="private-label">Personal list</span></div>
-            <form className="add-form" onSubmit={addTask}>
+            <form className="add-form" onSubmit={saveTask}>
               <label className="sr-only" htmlFor="task-title">Task title</label>
               <span className="input-plus" aria-hidden="true">+</span>
               <input id="task-title" value={newTitle} onChange={event => setNewTitle(event.target.value)} placeholder="What would you like to get done?" maxLength={255} disabled={taskBusy || busy} required />
-              <button className="button-primary" type="submit" disabled={taskBusy || busy || loadingTasks}>{addingTask ? 'Adding…' : 'Add task'}<span aria-hidden="true"> ↗</span></button>
+              <button
+                  className="button-primary"
+                  type="submit"
+                  disabled={taskBusy || busy || loadingTasks}
+                >
+                  {addingTask || editingTaskId !== null
+                    ? 'Saving…'
+                    : taskToEdit
+                      ? 'Save changes'
+                      : 'Add task'}
+                </button>
+
+                {taskToEdit && (
+                  <button
+                    className="button-quiet"
+                    type="button"
+                    disabled={taskBusy || busy}
+                    onClick={cancelEdit}
+                  >
+                    Cancel
+                  </button>
+                )}
             </form>
             {loadingTasks && <p className="empty-state" role="status">Loading your tasks…</p>}
             {taskError && <p className="alert" role="alert">{taskError}</p>}
@@ -397,7 +419,25 @@ export default function App() {
                   <label className="task-label"><input type="checkbox" checked={task.completed} disabled={taskBusy || busy} onChange={() => void toggleTask(task)} /><span>{task.title}</span></label>
                   <span className={task.completed ? 'badge badge-complete' : 'badge badge-pending'}>{updatingTaskId === task.id ? 'Saving…' : task.completed ? 'Completed' : 'Pending'}</span>
                   <div className="task-actions">
-                    <button className="button-quiet" type="button" disabled={taskBusy || busy} onClick={() => void editTask(task)} aria-label={`Edit ${task.title}`}>{editingTaskId === task.id ? 'Saving…' : 'Edit'}</button>
+                    <button
+                      className="button-quiet"
+                      type="button"
+                      disabled={taskBusy || busy}
+                      onClick={() => editTask(task)}
+                    >
+                      Edit
+                    </button>
+
+                    {taskToEdit && (
+                      <button
+                        className="button-quiet"
+                        type="button"
+                        disabled={taskBusy || busy}
+                        onClick={cancelEdit}
+                      >
+                        Cancel
+                      </button>
+                    )}
                     <button className="button-danger" type="button" disabled={taskBusy || busy} onClick={() => void deleteTask(task)} aria-label={`Delete ${task.title}`}>{deletingTaskId === task.id ? 'Deleting…' : 'Delete'}</button>
                   </div>
                 </li>
