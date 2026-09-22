@@ -16,6 +16,13 @@ type Task = {
   created_at: string;
   updated_at: string;
 };
+type PaginatedTasks = {
+  data: Task[];
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+};
 type User = {
   id: number;
   name: string;
@@ -79,6 +86,10 @@ export default function App() {
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [taskError, setTaskError] = useState("");
 
+  const [page, setPage] = useState(1);
+  const [lastPage, setLastPage] = useState(1);
+  const [totalTasks, setTotalTasks] = useState(0);
+
   // true means the signup form is selected.
   const isRegistering = mode === 'register';
   const [newTitle, setNewTitle] = useState('');
@@ -124,7 +135,7 @@ export default function App() {
     };
   }, []);
 
-  // Load tasks after the session check or login gives us a user.
+  // Load the selected page after login or whenever the page changes.
   useEffect(() => {
     if (!user) {
       return;
@@ -137,10 +148,14 @@ export default function App() {
       setTaskError('');
 
       try {
-        const response = await api.get<Task[]>('/api/tasks');
+        const response = await api.get<PaginatedTasks>('/api/tasks', {
+          params: { page },
+        });
 
         if (active) {
-          setTasks(response.data);
+          setTasks(response.data.data);
+          setLastPage(response.data.last_page);
+          setTotalTasks(response.data.total);
         }
       } catch (error: unknown) {
         if (active) {
@@ -158,7 +173,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user, page]);
 
   async function saveTask(event: FormEvent<HTMLFormElement>) {
   event.preventDefault();
@@ -443,6 +458,33 @@ export default function App() {
                 </li>
               ))}
             </ul>
+            
+            <div className="panel-footer">
+              <button
+                type="button"
+                className="button-quiet"
+                disabled={page <= 1 || loadingTasks || taskBusy || busy}
+                onClick={() => setPage(previous => previous - 1)}
+              >
+                Previous
+              </button>
+
+              <span>
+                Page {page} of {lastPage} · {totalTasks} tasks
+              </span>
+
+              <button
+                type="button"
+                className="button-quiet"
+                disabled={
+                  page >= lastPage || loadingTasks || taskBusy || busy
+                }
+                onClick={() => setPage(previous => previous + 1)}
+              >
+                Next
+              </button>
+            </div>
+
             {tasks.length > 0 && <div className="panel-footer"><span>{completedCount} of {tasks.length} tasks completed</span><progress value={completedCount} max={tasks.length} aria-label="Task completion" /></div>}
           </section>
           {error && <p className="alert" role="alert">{error}</p>}

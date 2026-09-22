@@ -4,15 +4,23 @@ namespace App\Repositories;
 
 use App\Models\User;
 use App\Models\Task;
-use Illuminate\Database\Eloquent\Collection;
+//use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 //For now, remember just this: the repository does the database work; the interface describes the methods it must provide.
 
 class EloquentTaskRepository implements TaskRepositoryInterface
 {
-    public function getForUser(User $user): Collection
+    /*public function getForUser(User $user): Collection
     {
         return $user->tasks()->latest()->get();
+    }*/
+    
+    public function getForUser(User $user): LengthAwarePaginator
+    {
+        return $user->tasks()
+            ->orderByDesc('id')
+            ->paginate(2);
     }
 
     public function createForUser(User $user, array $data): Task
